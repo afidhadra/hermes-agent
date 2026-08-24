@@ -16,6 +16,19 @@ export default [
     }
   },
   {
+    // Test files run under vitest's jsdom environment (vitest.config.ts:
+    // environment: 'jsdom'), so `document` is a legitimate global there.
+    // The shared config omits globals.browser, and the block below re-adds
+    // browser globals for the renderer — but `document` was separately
+    // restricted here, producing 120 un-fixable warnings on every push.
+    // Disable the restriction for test files (they need document for
+    // testing-library / jsdom assertions).
+    files: ['**/*.test.tsx'],
+    rules: {
+      'no-restricted-globals': 'off'
+    }
+  },
+  {
     // THE PLUGIN FENCE: plugins speak @hermes/plugin-sdk (+ react), never `@/…`
     // internals — the same isolation a runtime-fetched published plugin gets,
     // enforced on bundled ones so the SDK surface stays honest and sufficient.
@@ -32,12 +45,6 @@ export default [
           ]
         }
       ]
-    }
-  },
-  {
-    files: ['**/*.test.tsx'],
-    rules: {
-      'no-restricted-globals': ['warn', 'document']
     }
   },
   {
