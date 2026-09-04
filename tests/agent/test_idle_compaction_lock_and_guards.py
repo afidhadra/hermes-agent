@@ -114,6 +114,28 @@ def test_idle_compaction_status_emitted_by_default(tmp_path: Path) -> None:
     ), f"expected idle status line, got: {events}"
 
 
+def test_idle_compaction_survives_engine_without_summary_target_ratio(
+    tmp_path: Path,
+) -> None:
+    """A plugin context engine (ContextEngine ABC) may lack the
+    ContextCompressor-only ``summary_target_ratio``. The idle floor must
+    getattr-guard that attribute: floor 0 (no floor), compaction proceeds,
+    no AttributeError (regression: guard lost when the floor computation
+    moved from turn_context.py to turn_context_compaction.py)."""
+    db = SessionDB(db_path=tmp_path / "state.db")
+    sid = "IDLE_PLUGIN_ENGINE"
+    db.create_session(sid, source="cli")
+    agent = _prep_idle_agent(db, sid)
+    # Simulate a plugin context engine (ContextEngine ABC) that LACKS the
+    # ContextCompressor-only summary_target_ratio. MagicMock auto-creates
+    # attributes, so delete it off the prepared compressor mock.
+    del agent.context_compressor.summary_target_ratio
+
+    _run_prologue(agent, _history())
+
+    agent.context_compressor.compress.assert_called_once()
+
+
 def test_idle_compaction_defers_to_held_compression_lock(tmp_path: Path) -> None:
     """An idle-triggered compress racing another path must sit the round out.
 
