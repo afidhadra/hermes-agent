@@ -145,7 +145,14 @@ def _apply_live_compression_config(agent: Any, cfg: dict | None) -> None:
         # model.context_length removed: drop the override and force re-inference from model metadata on
         # next access (construction's deferred resolution); re-applies the small-context floor too.
         cc._config_context_length = cc._resolved_context_length = None
-    cc.threshold_tokens_cap = cc._coerce_threshold_tokens_cap(compression.get("threshold_tokens"))
+    # getattr guard: _coerce_threshold_tokens_cap exists only on ContextCompressor;
+    # plugin context engines (ContextEngine ABC subclasses, e.g. raginject) occupy
+    # the agent.context_compressor slot but don't implement it — their compress()
+    # owns the threshold policy, so leave the cap untouched instead of raising
+    # (same treatment as the summary_target_ratio guard in idle compaction).
+    _coerce_cap = getattr(cc, "_coerce_threshold_tokens_cap", None)
+    if callable(_coerce_cap):
+        cc.threshold_tokens_cap = _coerce_cap(compression.get("threshold_tokens"))
     # Invalidate the cached trigger so the next preflight re-derives from percent/window, then the cap.
     cc._threshold_tokens = cc._tail_token_budget = None
 
