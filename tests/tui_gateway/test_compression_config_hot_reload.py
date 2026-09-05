@@ -11,6 +11,7 @@ from types import SimpleNamespace
 
 from agent.context_compressor import ContextCompressor
 from tui_gateway import server
+from tui_gateway import session_compression
 
 
 def _session_with_compressor(**compression_ctor):
@@ -326,3 +327,34 @@ def test_apply_live_compression_config_is_self_contained():
     _apply_live_compression_config(agent, {"compression": {"enabled": True}})
     assert agent.compression_enabled is True
     assert agent.codex_responses_native_compaction is False
+
+
+def test_plugin_context_engine_without_cap_coercer_is_left_alone(monkeypatch):
+    """Plugin engines (ContextEngine ABC, e.g. raginject) don't implement
+    _coerce_threshold_tokens_cap — a live config sync must skip the cap adoption
+    instead of raising AttributeError (which drops the whole sync and warns)."""
+    class _PluginEngine:
+        threshold_tokens_cap = None  # engine owns its own threshold policy
+        _threshold_tokens = 1
+        _tail_token_budget = 1
+
+    agent = SimpleNamespace(
+        model="unset-test-model",
+        provider="",
+        context_compressor=_PluginEngine(),
+        compression_enabled=True,
+        compression_idle_compact_after_seconds=0,
+        codex_responses_native_compaction=False,
+        codex_responses_compact_threshold=200_000,
+    )
+    session = {"agent": agent, "session_key": "session-plugin-engine"}
+
+    _sync_with_cfg(
+        monkeypatch,
+        session,
+        {"compression": {"enabled": False, "threshold_tokens": 90_000}},
+    )
+
+    assert agent.compression_enabled is False  # agent-level keys still adopted
+    assert agent.context_compressor.threshold_tokens_cap is None  # untouched
+    assert agent.context_compressor._threshold_tokens is None  # cache invalidated
